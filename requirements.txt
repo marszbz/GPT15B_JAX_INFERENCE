@@ -2,7 +2,7 @@
 # Ubuntu + CUDA 11.8 + JAX 0.6.1
 
 # JAX核心包
-jax==0.6.1
+jax>=0.6.1
 flax>=0.8.0
 optax>=0.1.9
 

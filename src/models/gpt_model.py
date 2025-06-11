@@ -11,6 +11,40 @@ from dataclasses import dataclass
 from functools import partial
 
 
+def create_device_mesh(num_devices: int = None):
+    """创建设备网格用于多GPU并行"""
+    if num_devices is None:
+        devices = jax.devices()
+        num_devices = len(devices)
+    else:
+        devices = jax.devices()[:num_devices]
+    
+    if num_devices > 1:
+        mesh = jax.sharding.Mesh(devices, ('model',))
+        return mesh
+    else:
+        return None
+
+
+def get_model_sharding_rules(config: 'GPTConfig'):
+    """获取模型参数的分片规则"""
+    def get_partition_spec(param):
+        """为不同参数定义分片策略"""
+        if param.ndim >= 2:
+            # 大的权重矩阵按第一个维度分片
+            if param.shape[0] >= 512:
+                return jax.sharding.PartitionSpec('model', None)
+            elif param.shape[1] >= 512:
+                return jax.sharding.PartitionSpec(None, 'model')
+            else:
+                return jax.sharding.PartitionSpec()
+        else:
+            # 1D参数不分片
+            return jax.sharding.PartitionSpec()
+    
+    return get_partition_spec
+
+
 @dataclass
 class GPTConfig:
     """GPT-1.5B模型配置"""
