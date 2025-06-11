@@ -173,8 +173,35 @@ def check_jax_installation():
         devices = jax.devices()
         print(f"✅ 可用设备数量: {len(devices)}")
         
-        gpu_devices = [d for d in devices if d.device_kind == 'gpu']
-        cpu_devices = [d for d in devices if d.device_kind == 'cpu']
+        # 修复GPU检测逻辑 - 使用更准确的检测方法
+        gpu_devices = []
+        cpu_devices = []
+        
+        for device in devices:
+            device_str = str(device).lower()
+            platform = getattr(device, 'platform', '').lower()
+            device_kind = getattr(device, 'device_kind', '').lower()
+            
+            # 检测GPU设备的多种方式
+            is_gpu = (
+                'cuda' in device_str or 
+                'gpu' in device_str or 
+                platform == 'gpu' or
+                'nvidia' in device_kind or
+                'geforce' in device_kind or
+                'rtx' in device_kind
+            )
+            
+            is_cpu = (
+                'cpu' in device_str or 
+                platform == 'cpu' or
+                device_kind == 'cpu'
+            )
+            
+            if is_gpu:
+                gpu_devices.append(device)
+            elif is_cpu:
+                cpu_devices.append(device)
         
         print(f"GPU设备: {len(gpu_devices)}")
         print(f"CPU设备: {len(cpu_devices)}")
@@ -182,11 +209,32 @@ def check_jax_installation():
         if gpu_devices:
             print("✅ GPU支持已启用")
             for i, device in enumerate(gpu_devices):
+                device_kind = getattr(device, 'device_kind', 'Unknown')
+                platform = getattr(device, 'platform', 'Unknown')
                 print(f"  GPU {i}: {device}")
+                print(f"    设备类型: {device_kind}")
+                print(f"    平台: {platform}")
+                
+            # GPU计算测试
+            try:
+                with jax.default_device(gpu_devices[0]):
+                    test_array = jnp.array([1.0, 2.0, 3.0])
+                    result = jnp.sum(test_array)
+                print(f"✅ GPU计算测试通过: {result}")
+            except Exception as e:
+                print(f"⚠️ GPU计算测试失败: {e}")
         else:
             print("⚠️ 未检测到GPU设备")
+            # 显示检测到的设备信息用于调试
+            print("检测到的设备详情:")
+            for i, device in enumerate(devices):
+                device_kind = getattr(device, 'device_kind', 'Unknown')
+                platform = getattr(device, 'platform', 'Unknown')
+                print(f"  设备 {i}: {device}")
+                print(f"    设备类型: {device_kind}")
+                print(f"    平台: {platform}")
         
-        # 简单计算测试
+        # 基本计算测试
         x = jnp.array([1.0, 2.0, 3.0])
         y = jnp.sum(x)
         print(f"✅ JAX计算测试通过: {y}")
