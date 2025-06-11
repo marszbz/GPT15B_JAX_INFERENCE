@@ -189,7 +189,8 @@ def check_jax_installation():
                 platform == 'gpu' or
                 'nvidia' in device_kind or
                 'geforce' in device_kind or
-                'rtx' in device_kind
+                'rtx' in device_kind or
+                'cuda:' in device_str  # 添加这个检测，因为你的设备显示为 cuda:0, cuda:1 等
             )
             
             is_cpu = (
@@ -239,7 +240,8 @@ def check_jax_installation():
         y = jnp.sum(x)
         print(f"✅ JAX计算测试通过: {y}")
         
-        return True
+        # 返回GPU检测结果 
+        return len(gpu_devices) > 0
         
     except ImportError as e:
         print(f"❌ JAX导入失败: {e}")
