@@ -16,6 +16,9 @@ from functools import partial
 # 设置JAX环境
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
+# 清理可能存在的有问题的XLA_FLAGS
+if 'XLA_FLAGS' in os.environ:
+    del os.environ['XLA_FLAGS']
 
 try:
     import jax
