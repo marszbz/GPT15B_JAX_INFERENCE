@@ -28,7 +28,7 @@ try:
     from jax.experimental import mesh_utils
     import flax.linen as nn
     import numpy as np
-    print(f"✅ JAX {jax.__version__} 图分割模式")
+    print(f"✅ JAX {jax.__version__} 图分割模式加载成功")
 except ImportError as e:
     print(f"❌ JAX导入失败: {e}")
     sys.exit(1)
@@ -53,7 +53,9 @@ class DetailedGraphPartitioner:
     
     def __init__(self, config: GraphPartitionConfig):
         self.config = config
-        self.devices = jax.devices()[:config.num_devices]
+        self.devices = jax.devices()
+        if len(self.devices) > config.num_devices:
+            self.devices = self.devices[:config.num_devices]
         self.mesh = None
         self.sharding_specs = {}
         
@@ -69,7 +71,7 @@ class DetailedGraphPartitioner:
         try:
             if len(self.devices) >= 4:
                 # 使用实际可用的设备数量
-                actual_devices = self.devices[:4]  # 取前4个设备
+                actual_devices = self.devices[:4]
                 print(f"使用设备数量: {len(actual_devices)}")
                 
                 # 手动创建2x2设备数组
@@ -90,33 +92,6 @@ class DetailedGraphPartitioner:
                 print(f"✅ 创建 (1,1) mesh (单设备模式)")
                 # 更新配置以适应单设备
                 self.config.model_axis = None
-                
-            else:
-                print(f"⚠️ 设备数量({len(self.devices)})不支持，无法创建mesh")
-                return False
-                
-            print(f"   网格形状: {self.mesh.shape}")
-            print(f"   轴名称: {self.mesh.axis_names}")
-            
-            # 打印设备分配详情
-            print(f"   设备分布:")
-            if len(self.mesh.shape) == 2:
-                for i in range(self.mesh.shape[0]):
-                    for j in range(self.mesh.shape[1]):
-                        device = self.mesh.devices[i, j]
-                        print(f"     位置[{i},{j}]: {device}")
-            else:
-                for i, device in enumerate(self.mesh.devices.flat):
-                    print(f"     位置[{i}]: {device}")
-                
-            return True
-            
-        except Exception as e:
-            print(f"❌ 网格创建失败: {e}")
-            print(f"   错误类型: {type(e).__name__}")
-            import traceback
-            traceback.print_exc()
-            return False
                 
             else:
                 print(f"⚠️ 设备数量({len(self.devices)})不支持，无法创建mesh")
@@ -202,6 +177,20 @@ class DetailedGraphPartitioner:
             }
         }
         
+        # 处理单设备情况
+        if self.config.model_axis is None:
+            for component, specs in strategies.items():
+                for param_name, spec in specs.items():
+                    if param_name != 'description' and isinstance(spec, PartitionSpec):
+                        # 将model轴分片改为无分片
+                        new_spec_args = []
+                        for axis in spec:
+                            if axis == 'model':
+                                new_spec_args.append(None)
+                            else:
+                                new_spec_args.append(axis)
+                        strategies[component][param_name] = PartitionSpec(*new_spec_args)
+        
         self.sharding_specs = strategies
         
         # 打印分片策略
@@ -212,7 +201,85 @@ class DetailedGraphPartitioner:
                 if param_name != 'description':
                     print(f"   {param_name}: {spec}")
     
-    def analyze_parameter_distribution(self, model_config):
+    def demonstrate_xla_optimizations(self):
+        """演示XLA编译器优化"""
+        print(f"\n⚡ XLA编译器优化演示")
+        print("-" * 30)
+        
+        if not self.mesh:
+            print("⚠️ 未创建mesh，无法演示XLA优化")
+            return
+        
+        # 创建简单的计算图
+        def simple_computation(x, w):
+            """简单的矩阵乘法 + 激活函数"""
+            return jax.nn.gelu(jnp.dot(x, w))
+        
+        # JIT编译
+        jit_computation = jax.jit(simple_computation)
+        
+        # 创建测试数据
+        key = jax.random.PRNGKey(42)
+        x = jax.random.normal(key, (32, 1600))  # batch_size x hidden_dim
+        w = jax.random.normal(key, (1600, 4800))  # hidden_dim x 3*hidden_dim
+        
+        print(f"📊 计算图分析:")
+        print(f"   输入形状: {x.shape}")
+        print(f"   权重形状: {w.shape}")
+        print(f"   计算类型: 矩阵乘法 + GELU激活")
+        
+        # 分片数据
+        with self.mesh:
+            if self.config.model_axis:
+                x_sharding = NamedSharding(self.mesh, PartitionSpec(self.config.data_axis, None))
+                w_sharding = NamedSharding(self.mesh, PartitionSpec(None, self.config.model_axis))
+            else:
+                x_sharding = NamedSharding(self.mesh, PartitionSpec('data', None))
+                w_sharding = NamedSharding(self.mesh, PartitionSpec(None))
+            
+            x_sharded = jax.device_put(x, x_sharding)
+            w_sharded = jax.device_put(w, w_sharding)
+            
+            print(f"\n🔧 XLA优化过程:")
+            print(f"   1. 图构建: 解析Python代码为XLA HLO")
+            print(f"   2. 优化器: 应用融合、重排列等优化")
+            print(f"   3. 并行化: 根据分片策略分布计算")
+            print(f"   4. 代码生成: 生成高效的GPU kernel")
+            
+            # 预热JIT编译
+            print(f"\n🚀 JIT编译预热...")
+            for i in range(3):
+                result = jit_computation(x_sharded, w_sharded)
+                jax.block_until_ready(result)
+                print(f"   预热 {i+1}/3 完成")
+            
+            # 性能测试
+            print(f"\n📈 性能测试:")
+            times = []
+            for i in range(5):
+                start_time = time.time()
+                result = jit_computation(x_sharded, w_sharded)
+                jax.block_until_ready(result)
+                end_time = time.time()
+                times.append(end_time - start_time)
+                print(f"   运行 {i+1}: {(end_time - start_time)*1000:.2f}ms")
+            
+            avg_time = np.mean(times)
+            throughput = (32 * 1600 * 4800) / avg_time / 1e9  # GFLOPS
+            
+            print(f"\n🎯 XLA优化效果:")
+            print(f"   平均执行时间: {avg_time*1000:.2f}ms")
+            print(f"   计算吞吐量: {throughput:.2f} GFLOPS")
+            print(f"   输出形状: {result.shape}")
+            print(f"   内存效率: 参数自动分片到多GPU")
+            
+        return {
+            'avg_time_ms': avg_time * 1000,
+            'throughput_gflops': throughput,
+            'output_shape': result.shape
+        }
+    
+    def analyze_parameter_distribution(self, model_config=None):
         """分析参数分布"""
         print(f"\n📊 参数分布分析")
         print("-" * 30)
@@ -223,43 +290,6 @@ class DetailedGraphPartitioner:
         n_layer = 48
         n_head = 25
         
-        params = {
-            'embedding': {
-                'token_embedding': (vocab_size, n_embd),
-                'position_embedding': (2048, n_embd)
-            },
-            'transformer_blocks': {},
-            'output': {
-                'lm_head': (n_embd, vocab_size)
-            }
-        }
-        
-        # 每个Transformer块的参数
-        for layer_idx in range(n_layer):
-            layer_params = {
-                'attention': {
-                    'qkv_weight': (n_embd, 3 * n_embd),
-                    'qkv_bias': (3 * n_embd,),
-                    'output_weight': (n_embd, n_embd),
-                    'output_bias': (n_embd,)
-                },
-                'mlp': {
-                    'dense1_weight': (n_embd, 4 * n_embd),
-                    'dense1_bias': (4 * n_embd,),
-                    'dense2_weight': (4 * n_embd, n_embd),
-                    'dense2_bias': (n_embd,)
-                },
-                'layernorm1': {
-                    'scale': (n_embd,),
-                    'bias': (n_embd,)
-                },
-                'layernorm2': {
-                    'scale': (n_embd,),
-                    'bias': (n_embd,)
-                }
-            }
-            params['transformer_blocks'][f'layer_{layer_idx}'] = layer_params
-        
         # 分析每个设备的参数分布
         device_params = {f'device_{i}': 0 for i in range(len(self.devices))}
         total_params = 0
@@ -268,9 +298,17 @@ class DetailedGraphPartitioner:
         
         # 计算嵌入层参数
         embed_params = vocab_size * n_embd + 2048 * n_embd
-        sharded_embed = embed_params // len(self.devices)  # 词汇表分片
+        if len(self.devices) > 1 and self.config.model_axis:
+            sharded_embed = embed_params // len(self.devices)  # 词汇表分片
+        else:
+            sharded_embed = embed_params  # 单设备或无分片
+            
         for i in range(len(self.devices)):
-            device_params[f'device_{i}'] += sharded_embed
+            if len(self.devices) > 1 and self.config.model_axis:
+                device_params[f'device_{i}'] += sharded_embed
+            else:
+                device_params[f'device_0'] += embed_params
+                break
         total_params += embed_params
         print(f"   嵌入层: {embed_params:,} 参数 → 每设备: {sharded_embed:,}")
         
@@ -284,31 +322,54 @@ class DetailedGraphPartitioner:
         )
         
         transformer_params = n_layer * layer_param_count
-        # 注意力头和MLP分片
-        sharded_transformer = transformer_params // len(self.devices)
+        if len(self.devices) > 1 and self.config.model_axis:
+            sharded_transformer = transformer_params // len(self.devices)
+        else:
+            sharded_transformer = transformer_params
+            
         for i in range(len(self.devices)):
-            device_params[f'device_{i}'] += sharded_transformer
+            if len(self.devices) > 1 and self.config.model_axis:
+                device_params[f'device_{i}'] += sharded_transformer
+            else:
+                device_params[f'device_0'] += transformer_params
+                break
         total_params += transformer_params
         print(f"   Transformer: {transformer_params:,} 参数 → 每设备: {sharded_transformer:,}")
         
         # 计算输出层参数
         output_params = n_embd * vocab_size
-        sharded_output = output_params // len(self.devices)  # 词汇表分片
+        if len(self.devices) > 1 and self.config.model_axis:
+            sharded_output = output_params // len(self.devices)
+        else:
+            sharded_output = output_params
+            
         for i in range(len(self.devices)):
-            device_params[f'device_{i}'] += sharded_output
+            if len(self.devices) > 1 and self.config.model_axis:
+                device_params[f'device_{i}'] += sharded_output
+            else:
+                device_params[f'device_0'] += output_params
+                break
         total_params += output_params
         print(f"   输出层: {output_params:,} 参数 → 每设备: {sharded_output:,}")
         
         print(f"\n📊 设备负载平衡:")
         for device, count in device_params.items():
-            percentage = (count / total_params) * 100
-            memory_gb = count * 4 / (1024**3)  # float32
-            print(f"   {device}: {count:,} 参数 ({percentage:.1f}%) ≈ {memory_gb:.2f}GB")
+            if count > 0:  # 只显示有参数的设备
+                percentage = (count / total_params) * 100
+                memory_gb = count * 4 / (1024**3)  # float32
+                print(f"   {device}: {count:,} 参数 ({percentage:.1f}%) ≈ {memory_gb:.2f}GB")
         
         print(f"\n📈 总体统计:")
         print(f"   总参数量: {total_params:,} ({total_params/1e9:.2f}B)")
-        print(f"   平均每设备: {total_params//len(self.devices):,}")
-        print(f"   负载均衡度: {(min(device_params.values())/max(device_params.values()))*100:.1f}%")
+        
+        active_devices = sum(1 for count in device_params.values() if count > 0)
+        if active_devices > 1:
+            print(f"   平均每设备: {total_params//active_devices:,}")
+            min_params = min(count for count in device_params.values() if count > 0)
+            max_params = max(count for count in device_params.values() if count > 0)
+            print(f"   负载均衡度: {(min_params/max_params)*100:.1f}%")
+        else:
+            print(f"   单设备模式: 所有参数在一个设备上")
         
         return {
             'total_params': total_params,
@@ -358,17 +419,32 @@ class DetailedGraphPartitioner:
                 for param_name, param in comp_params.items():
                     # 根据组件类型选择分片策略
                     if component == 'embedding' and 'weight' in param_name:
-                        spec = PartitionSpec(self.config.model_axis, None)  # 词汇表分片
+                        if self.config.model_axis:
+                            spec = PartitionSpec(self.config.model_axis, None)  # 词汇表分片
+                        else:
+                            spec = PartitionSpec()  # 单设备不分片
                     elif component == 'attention':
                         if 'qkv' in param_name:
-                            spec = PartitionSpec(None, self.config.model_axis)  # 注意力头分片
+                            if self.config.model_axis:
+                                spec = PartitionSpec(None, self.config.model_axis)  # 注意力头分片
+                            else:
+                                spec = PartitionSpec()
                         else:
-                            spec = PartitionSpec(self.config.model_axis, None)
+                            if self.config.model_axis:
+                                spec = PartitionSpec(self.config.model_axis, None)
+                            else:
+                                spec = PartitionSpec()
                     elif component == 'mlp':
                         if 'dense1' in param_name:
-                            spec = PartitionSpec(None, self.config.model_axis)  # 隐藏层分片
+                            if self.config.model_axis:
+                                spec = PartitionSpec(None, self.config.model_axis)  # 隐藏层分片
+                            else:
+                                spec = PartitionSpec()
                         else:
-                            spec = PartitionSpec(self.config.model_axis, None)
+                            if self.config.model_axis:
+                                spec = PartitionSpec(self.config.model_axis, None)
+                            else:
+                                spec = PartitionSpec()
                     else:
                         spec = PartitionSpec()  # 不分片
                     
@@ -381,80 +457,6 @@ class DetailedGraphPartitioner:
         
         print(f"\n🎯 分片执行完成!")
         return sharded_params
-    
-    def create_performance_prediction(self):
-        """创建性能预测"""
-        print(f"\n📈 性能预测分析")
-        print("-" * 30)
-        
-        # 基于4个RTX 3090的性能预测
-        gpu_memory_gb = 24
-        gpu_compute_tflops = 35.6  # RTX 3090理论峰值
-        
-        # 模型配置
-        vocab_size = 50257
-        n_embd = 1600
-        n_layer = 48
-        batch_size = 32
-        seq_len = 512
-        
-        # 计算内存需求
-        param_memory = 1.5e9 * 4 / (1024**3)  # 1.5B参数，float32
-        activation_memory = batch_size * seq_len * n_embd * 4 / (1024**3)
-        
-        # 单GPU vs 多GPU对比
-        scenarios = {
-            '单GPU': {
-                'devices': 1,
-                'param_memory_per_gpu': param_memory,
-                'activation_memory_per_gpu': activation_memory,
-                'compute_efficiency': 0.6,  # 单GPU效率
-                'communication_overhead': 0.0
-            },
-            '数据并行(4GPU)': {
-                'devices': 4,
-                'param_memory_per_gpu': param_memory,  # 每个GPU都有完整参数
-                'activation_memory_per_gpu': activation_memory / 4,  # 激活值分片
-                'compute_efficiency': 0.8,  # 数据并行效率
-                'communication_overhead': 0.1  # AllReduce通信
-            },
-            '模型并行(4GPU)': {
-                'devices': 4,
-                'param_memory_per_gpu': param_memory / 4,  # 参数分片
-                'activation_memory_per_gpu': activation_memory,  # 完整激活值
-                'compute_efficiency': 0.7,  # 模型并行效率（通信开销较大）
-                'communication_overhead': 0.2  # 参数通信
-            },
-            '混合并行(4GPU)': {
-                'devices': 4,
-                'param_memory_per_gpu': param_memory / 2,  # 2x2混合
-                'activation_memory_per_gpu': activation_memory / 2,
-                'compute_efficiency': 0.85,  # 最优效率
-                'communication_overhead': 0.15  # 平衡的通信
-            }
-        }
-        
-        print(f"💾 内存使用预测:")
-        for scenario, config in scenarios.items():
-            total_memory = config['param_memory_per_gpu'] + config['activation_memory_per_gpu']
-            memory_utilization = (total_memory / gpu_memory_gb) * 100
-            
-            print(f"\n   {scenario}:")
-            print(f"     参数内存: {config['param_memory_per_gpu']:.2f}GB/GPU")
-            print(f"     激活内存: {config['activation_memory_per_gpu']:.2f}GB/GPU")
-            print(f"     总内存: {total_memory:.2f}GB/GPU")
-            print(f"     内存利用率: {memory_utilization:.1f}%")
-            
-            # 性能预测
-            theoretical_tflops = gpu_compute_tflops * config['devices']
-            effective_tflops = theoretical_tflops * config['compute_efficiency'] * (1 - config['communication_overhead'])
-            speedup = effective_tflops / (gpu_compute_tflops * 0.6)  # 相对于单GPU
-            
-            print(f"     理论算力: {theoretical_tflops:.1f} TFLOPS")
-            print(f"     有效算力: {effective_tflops:.1f} TFLOPS")
-            print(f"     相对加速: {speedup:.2f}x")
-        
-        return scenarios
 
 def main():
     """主函数 - 详细图分割分析"""
@@ -462,9 +464,10 @@ def main():
     print("=" * 50)
     
     # 创建配置
+    available_devices = len(jax.devices())
     config = GraphPartitionConfig(
-        num_devices=len(jax.devices()),
-        mesh_shape=(2, 2) if len(jax.devices()) >= 4 else (2, 1)
+        num_devices=available_devices,
+        mesh_shape=(2, 2) if available_devices >= 4 else (2, 1)
     )
     
     partitioner = DetailedGraphPartitioner(config)
@@ -477,29 +480,32 @@ def main():
             # 2. 定义分片策略
             partitioner.define_sharding_strategies()
             
-            # 3. 分析参数分布
-            param_analysis = partitioner.analyze_parameter_distribution(config)
+            # 3. 演示XLA优化
+            xla_results = partitioner.demonstrate_xla_optimizations()
             
-            # 4. 演示分片执行
+            # 4. 分析参数分布
+            param_analysis = partitioner.analyze_parameter_distribution()
+            
+            # 5. 演示分片执行
             sharded_params = partitioner.demonstrate_sharding_execution()
-            
-            # 5. 性能预测
-            performance_prediction = partitioner.create_performance_prediction()
             
             # 6. 保存结果
             results = {
-                'config': config.__dict__,
+                'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+                'config': {
+                    'num_devices': config.num_devices,
+                    'mesh_shape': config.mesh_shape,
+                    'data_axis': config.data_axis,
+                    'model_axis': config.model_axis
+                },
                 'mesh_info': {
-                    'shape': partitioner.mesh.shape,
-                    'axis_names': partitioner.mesh.axis_names,
+                    'shape': list(partitioner.mesh.shape),
+                    'axis_names': list(partitioner.mesh.axis_names),
                     'device_count': len(partitioner.devices)
                 },
+                'xla_optimization': xla_results,
                 'parameter_analysis': param_analysis,
-                'performance_prediction': performance_prediction,
-                'sharding_specs': {
-                    component: {k: str(v) for k, v in specs.items() if k != 'description'}
-                    for component, specs in partitioner.sharding_specs.items()
-                }
+                'sharding_successful': sharded_params is not None
             }
             
             results_file = Path("detailed_graph_partition_analysis.json")
@@ -517,11 +523,21 @@ def main():
             print(f"   总参数量: {param_analysis['total_params']/1e9:.2f}B")
             print(f"   每设备内存: {param_analysis['memory_per_device_gb']:.2f}GB")
             
-            print(f"\n💡 关键优势:")
-            print(f"   1. 精确的参数分片减少单设备内存压力")
-            print(f"   2. 注意力头并行提高计算效率")
-            print(f"   3. 混合并行策略平衡内存和计算")
-            print(f"   4. 负载均衡确保设备利用率")
+            if xla_results:
+                print(f"   XLA吞吐量: {xla_results['throughput_gflops']:.1f} GFLOPS")
+                print(f"   平均延迟: {xla_results['avg_time_ms']:.2f}ms")
+            
+            print(f"\n💡 XLA编译器优化特性:")
+            print(f"   1. 自动图融合: 将小操作合并为大kernel")
+            print(f"   2. 内存优化: 减少中间结果的内存占用")
+            print(f"   3. 并行优化: 根据mesh自动分布计算")
+            print(f"   4. 快速数学: 使用近似但更快的数学函数")
+            
+            print(f"\n🔧 图分割核心技术:")
+            print(f"   1. 参数分片: 大权重矩阵分布到多GPU")
+            print(f"   2. 数据并行: batch维度分片到不同设备")
+            print(f"   3. 模型并行: 注意力头/MLP分片")
+            print(f"   4. 混合并行: 数据+模型并行结合")
             
         else:
             print(f"❌ 无法创建设备网格，请检查GPU设备数量")
