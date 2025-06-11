@@ -9,10 +9,12 @@ from typing import List
 
 def setup_jax_environment():
     """设置JAX环境配置"""
-    # Windows JAX配置优化
+    # JAX配置优化
     os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
     os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
-    os.environ['XLA_FLAGS'] = '--xla_gpu_enable_triton_softmax_fusion'
+    # 清理可能存在的XLA_FLAGS
+    if 'XLA_FLAGS' in os.environ:
+        del os.environ['XLA_FLAGS']
     
     print("🔧 JAX环境配置完成")
 

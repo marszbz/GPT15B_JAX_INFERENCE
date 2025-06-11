@@ -14,8 +14,9 @@ from pathlib import Path
 # 设置JAX环境（必须在导入JAX之前）
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '0.8'
-# 移除不兼容的XLA标志
-# os.environ['XLA_FLAGS'] = '--xla_gpu_enable_triton_softmax_fusion'  # 该标志在JAX 0.6.1中不支持
+# 清理可能存在的XLA_FLAGS
+if 'XLA_FLAGS' in os.environ:
+    del os.environ['XLA_FLAGS']
 
 # 导入JAX相关包
 try:
