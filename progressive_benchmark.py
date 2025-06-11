@@ -74,10 +74,11 @@ class ProgressiveMultiHeadAttention(nn.Module):
         qkv = qkv.reshape(B, T, 3, self.config.n_head, C // self.config.n_head)
         qkv = qkv.transpose(2, 0, 3, 1, 4)  # (3, B, nh, T, hs)
         
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k, v = qkv[0], qkv[1], qkv[2]  # 每个的形状: (B, nh, T, hs)
         
-        # 注意力权重
-        att = (q @ k.transpose(-2, -1)) * (1.0 / jnp.sqrt(k.shape[-1]))
+        # 注意力权重 - 正确的转置维度
+        # k.shape = (B, nh, T, hs), 我们想转置最后两个维度 T 和 hs
+        att = (q @ k.transpose(0, 1, 3, 2)) * (1.0 / jnp.sqrt(k.shape[-1]))
         
         # 应用因果掩码
         if mask is not None:
