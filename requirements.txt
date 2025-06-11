@@ -1,0 +1,43 @@
+# GPT-1.5B JAX推理项目依赖包
+# Ubuntu + CUDA 11.8 + JAX 0.6.1
+
+# JAX核心包
+jax==0.6.1
+flax>=0.8.0
+optax>=0.1.9
+
+# 基础科学计算包
+numpy>=1.24.0
+scipy>=1.10.0
+
+# 数据处理
+pandas>=2.0.0
+
+# 工具包
+pyyaml>=6.0
+tqdm>=4.65.0
+psutil>=5.9.0
+
+# 可选：GPU监控
+GPUtil>=1.4.0
+
+# 可选：可视化
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# 可选：HuggingFace工具(如果需要真实tokenizer)
+# transformers>=4.35.0
+# tokenizers>=0.15.0
+psutil>=5.9.0
+
+# GPU监控 (可选)
+GPUtil>=1.4.0
+
+# 可视化 (可选)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# 开发工具 (可选)
+pytest>=7.4.0
+black>=23.0.0
+isort>=5.12.0

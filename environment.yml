@@ -1,0 +1,21 @@
+# Conda环境配置文件
+name: gpt_inference
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - matplotlib
+  - pandas
+  - pyyaml
+  - tqdm
+  - psutil
+  - pip:
+      - jax==0.6.1
+      - flax>=0.8.0
+      - optax>=0.1.9
+      - GPUtil>=1.4.0
+      - datasets>=2.14.0
