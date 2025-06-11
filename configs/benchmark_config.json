@@ -1,0 +1,131 @@
+{
+  "benchmark_config": {
+    "version": "1.0.0",
+    "description": "GPT-1.5B JAX Multi-GPU Inference Benchmark Configuration",
+    "created": "2025-05-30",
+    "environment": {
+      "platform": "Ubuntu 22.04",
+      "python_version": "3.10",
+      "cuda_version": "11.8",
+      "jax_version": "0.6.1",
+      "gpu_count": 4,
+      "gpu_model": "RTX 3090"
+    }
+  },
+  "model": {
+    "vocab_size": 50257,
+    "n_positions": 2048,
+    "n_embd": 1600,
+    "n_layer": 48,
+    "n_head": 25,
+    "dropout": 0.1,
+    "use_bias": true
+  },
+  "benchmark": {
+    "max_samples": 10,
+    "batch_size": 1,
+    "max_tokens": 100,
+    "temperature": 0.8,
+    "top_p": 0.9,
+    "num_warmup": 3,
+    "num_runs": 5,
+    "output_dir": "results",
+    "save_results": true,
+    "show_gpu_info": true,
+    "device_count": 4
+  },
+  "system": {
+    "cuda_visible_devices": null,
+    "jax_memory_fraction": 0.8,
+    "enable_triton_fusion": false,
+    "log_level": "INFO",
+    "random_seed": 42,
+    "xla_flags": {
+      "xla_python_client_preallocate": "false",
+      "xla_python_client_mem_fraction": "0.8"
+    }
+  },
+  "datasets": {
+    "config_0": {
+      "prompt_length": 32,
+      "generation_length": 32,
+      "description": "Short prompt, short generation"
+    },
+    "config_1": {
+      "prompt_length": 32,
+      "generation_length": 64,
+      "description": "Short prompt, medium generation"
+    },
+    "config_2": {
+      "prompt_length": 128,
+      "generation_length": 32,
+      "description": "Medium prompt, short generation"
+    },
+    "config_3": {
+      "prompt_length": 128,
+      "generation_length": 64,
+      "description": "Medium prompt, medium generation"
+    },
+    "config_4": {
+      "prompt_length": 256,
+      "generation_length": 32,
+      "description": "Long prompt, short generation"
+    },
+    "config_5": {
+      "prompt_length": 256,
+      "generation_length": 64,
+      "description": "Long prompt, medium generation"
+    },
+    "config_6": {
+      "prompt_length": 256,
+      "generation_length": 128,
+      "description": "Long prompt, long generation"
+    },
+    "config_7": {
+      "prompt_length": 512,
+      "generation_length": 64,
+      "description": "Very long prompt, medium generation"
+    }
+  },
+  "performance_targets": {
+    "min_throughput_tokens_per_sec": 100,
+    "max_latency_per_token_ms": 50,
+    "memory_utilization_threshold": 0.9,
+    "gpu_utilization_threshold": 0.8
+  },
+  "test_scenarios": {
+    "quick_test": {
+      "max_samples": 3,
+      "num_warmup": 1,
+      "num_runs": 2,
+      "configs": ["0", "2", "4"]
+    },
+    "standard_test": {
+      "max_samples": 10,
+      "num_warmup": 3,
+      "num_runs": 5,
+      "configs": ["0", "1", "2", "3", "4", "5"]
+    },
+    "comprehensive_test": {
+      "max_samples": 50,
+      "num_warmup": 5,
+      "num_runs": 10,
+      "configs": ["0", "1", "2", "3", "4", "5", "6", "7"]
+    }
+  },
+  "multi_gpu_settings": {
+    "enable_sharding": true,
+    "sharding_strategy": "data_parallel",
+    "mesh_shape": [4],
+    "device_mesh_axis_names": ["batch"],
+    "gradient_accumulation_steps": 1,
+    "sync_batch_stats": true
+  },
+  "monitoring": {
+    "track_memory_usage": true,
+    "track_gpu_utilization": true,
+    "track_temperature": true,
+    "log_interval_seconds": 10,
+    "save_metrics": true
+  }
+}

@@ -9,6 +9,7 @@ import sys
 import argparse
 import time
 import json
+import numpy as np
 from pathlib import Path
 
 # 设置JAX环境（必须在导入JAX之前）
@@ -182,7 +183,12 @@ class GraphPartitionedGPT:
         
         # 设置多GPU分片
         if self.num_devices > 1:
-            self._setup_graph_partitioning()
+            try:
+                self._setup_graph_partitioning()
+            except Exception as e:
+                print(f"⚠️ 多GPU分片设置失败，回退到单GPU模式: {e}")
+                print("ℹ️ 使用单GPU模式")
+                self.sharded_params = self.params
         else:
             print("ℹ️ 单GPU模式")
             self.sharded_params = self.params
@@ -206,29 +212,31 @@ class GraphPartitionedGPT:
         print("🕸️ 设置图分割和多GPU并行...")
         
         # 创建设备网格
-        self.mesh = jax.make_mesh((self.num_devices,), ('model',))
+        devices = jax.devices()
+        device_array = np.array(devices).reshape(-1, 1)  # 将设备列表转换为numpy数组
+        self.mesh = jax.sharding.Mesh(device_array, ('model',))
         
-        # 定义分片策略
-        def get_partition_spec(param):
-            """为不同参数定义分片策略"""
-            if param.ndim >= 2:
-                # 大的权重矩阵按第一个维度分片
-                if param.shape[0] >= 512:
-                    return jax.sharding.PartitionSpec('model', None)
-                elif param.shape[1] >= 512:
-                    return jax.sharding.PartitionSpec(None, 'model')
+        # 简化的分片策略：大参数按模型维度分片，小参数复制到所有设备
+        def create_sharded_params(params):
+            """创建分片参数"""
+            def shard_param(param):
+                if param.ndim >= 2 and param.shape[0] >= 512:
+                    # 大的权重矩阵按第一个维度分片
+                    spec = jax.sharding.PartitionSpec('model', None)
+                elif param.ndim >= 2 and param.shape[1] >= 512:
+                    # 按第二个维度分片
+                    spec = jax.sharding.PartitionSpec(None, 'model')
                 else:
-                    return jax.sharding.PartitionSpec()
-            else:
-                # 1D参数不分片
-                return jax.sharding.PartitionSpec()
+                    # 小参数或1D参数复制到所有设备
+                    spec = jax.sharding.PartitionSpec()
+                
+                sharding = jax.sharding.NamedSharding(self.mesh, spec)
+                return jax.device_put(param, sharding)
+            
+            return jax.tree_util.tree_map(shard_param, params)
         
-        # 应用分片规范
-        self.param_spec = jax.tree_util.tree_map(get_partition_spec, self.params)
-        
-        # 创建分片并分布参数
-        sharding = jax.sharding.NamedSharding(self.mesh, self.param_spec)
-        self.sharded_params = jax.device_put(self.params, sharding)
+        # 分片参数
+        self.sharded_params = create_sharded_params(self.params)
         
         print(f"✅ 图分割完成，参数已分布到 {self.num_devices} 个GPU")
     
