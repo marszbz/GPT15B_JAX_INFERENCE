@@ -464,8 +464,7 @@ class DAGVisualizer:
             
             logits = sharded_inference(params, input_ids_sharded)
             jax.block_until_ready(logits)
-            
-            end_time = time.time()
+              end_time = time.time()
             
             print(f"✅ 推理完成:")
             print(f"   输入形状: {input_ids.shape}")
@@ -474,13 +473,19 @@ class DAGVisualizer:
             print(f"   使用设备: {len(self.devices)} 个GPU")
             
             # 分析并行效率
-            sequential_estimate = total_computation / 1e12  # 假设1T FLOPS/s
-            parallel_efficiency = sequential_estimate / (end_time - start_time) / len(self.devices)
-            
-            print(f"\n📈 并行效率分析:")
-            print(f"   估算串行时间: {sequential_estimate*1000:.2f}ms")
-            print(f"   实际并行时间: {(end_time - start_time)*1000:.2f}ms")
-            print(f"   并行效率: {parallel_efficiency*100:.1f}%")
+            total_computation = sum(node.computation_cost for node in self.nodes.values())
+            if total_computation > 0:
+                sequential_estimate = total_computation / 1e12  # 假设1T FLOPS/s
+                parallel_efficiency = sequential_estimate / (end_time - start_time) / len(self.devices)
+                
+                print(f"\n📈 并行效率分析:")
+                print(f"   估算串行时间: {sequential_estimate*1000:.2f}ms")
+                print(f"   实际并行时间: {(end_time - start_time)*1000:.2f}ms")
+                print(f"   并行效率: {parallel_efficiency*100:.1f}%")
+            else:
+                print(f"\n📈 并行效率分析:")
+                print(f"   实际并行时间: {(end_time - start_time)*1000:.2f}ms")
+                print(f"   计算成本信息不可用，无法估算理论加速比")
     
     def export_dag_data(self):
         """导出DAG数据"""
