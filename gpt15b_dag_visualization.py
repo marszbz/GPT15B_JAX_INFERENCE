@@ -198,11 +198,11 @@ class DAGVisualizer:
         
         # 初始化参数
         params = model.init(key, input_ids)
-        
-        # 创建推理函数
+          # 创建推理函数
         def inference_fn(params, input_ids):
             return model.apply(params, input_ids)
-          # 获取JAX表达式（计算图）
+        
+        # 获取JAX表达式（计算图）
         closed_jaxpr = make_jaxpr(inference_fn)(params, input_ids)
         jaxpr = closed_jaxpr.jaxpr  # 从ClosedJaxpr中获取实际的Jaxpr
         
@@ -211,7 +211,8 @@ class DAGVisualizer:
         print(f"   原始方程数量: {len(jaxpr.eqns)}")
         print(f"   输入变量数量: {len(jaxpr.invars)}")
         print(f"   输出变量数量: {len(jaxpr.outvars)}")
-          # 解析JAXPR构建DAG
+        
+        # 解析JAXPR构建DAG
         self._parse_jaxpr_to_dag(jaxpr, input_ids.shape)
         
         return closed_jaxpr
@@ -461,10 +462,9 @@ class DAGVisualizer:
             # 执行推理
             print(f"🎬 执行分片推理...")
             start_time = time.time()
-            
             logits = sharded_inference(params, input_ids_sharded)
             jax.block_until_ready(logits)
-              end_time = time.time()
+            end_time = time.time()
             
             print(f"✅ 推理完成:")
             print(f"   输入形状: {input_ids.shape}")
