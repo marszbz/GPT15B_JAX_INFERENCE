@@ -507,23 +507,21 @@ class DAGVisualizer:
                 'device_count': len(self.devices)
             },
             'nodes': {},
-            'edges': self.edges,
-            'statistics': {
+            'edges': self.edges,            'statistics': {
                 'total_nodes': len(self.nodes),
                 'total_edges': len(self.edges),
-                'total_computation': sum(node.computation_cost for node in self.nodes.values()),
-                'total_memory': sum(node.memory_cost for node in self.nodes.values())
+                'total_computation': int(sum(node.computation_cost for node in self.nodes.values())),
+                'total_memory': int(sum(node.memory_cost for node in self.nodes.values()))
             }
         }
-        
-        # 导出节点信息
+          # 导出节点信息
         for name, node in self.nodes.items():
             dag_data['nodes'][name] = {
                 'op_type': node.op_type,
-                'shape': list(node.shape),
+                'shape': [int(x) for x in node.shape],  # 转换为Python int
                 'sharding': node.sharding,
-                'computation_cost': node.computation_cost,
-                'memory_cost': node.memory_cost
+                'computation_cost': int(node.computation_cost),  # 转换为Python int
+                'memory_cost': int(node.memory_cost)  # 转换为Python int
             }
         
         # 保存到文件
