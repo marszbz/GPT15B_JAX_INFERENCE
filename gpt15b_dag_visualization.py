@@ -202,20 +202,19 @@ class DAGVisualizer:
         # 创建推理函数
         def inference_fn(params, input_ids):
             return model.apply(params, input_ids)
-        
-        # 获取JAX表达式（计算图）
-        jaxpr = make_jaxpr(inference_fn)(params, input_ids)
+          # 获取JAX表达式（计算图）
+        closed_jaxpr = make_jaxpr(inference_fn)(params, input_ids)
+        jaxpr = closed_jaxpr.jaxpr  # 从ClosedJaxpr中获取实际的Jaxpr
         
         print(f"📊 计算图统计:")
         print(f"   输入: {input_ids.shape}")
         print(f"   原始方程数量: {len(jaxpr.eqns)}")
         print(f"   输入变量数量: {len(jaxpr.invars)}")
         print(f"   输出变量数量: {len(jaxpr.outvars)}")
-        
-        # 解析JAXPR构建DAG
+          # 解析JAXPR构建DAG
         self._parse_jaxpr_to_dag(jaxpr, input_ids.shape)
         
-        return jaxpr
+        return closed_jaxpr
     
     def _parse_jaxpr_to_dag(self, jaxpr, input_shape):
         """解析JAXPR构建DAG"""

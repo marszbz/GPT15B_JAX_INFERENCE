@@ -52,15 +52,15 @@ class HLOSyntaxExplainer:
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │ // 输入张量的分片注解                                       │
-│ %x = parameter(0) /*sharding={devices=[2,2]                │
-│                      layout=[0,1]}*/                       │
+│ %x = parameter(0) /*sharding={{devices=[2,2]               │
+│                      layout=[0,1]}}*/                      │
 │                                                             │
-│ %w = parameter(1) /*sharding={devices=[2,2]                │
-│                      layout=[1,0]}*/                       │
+│ %w = parameter(1) /*sharding={{devices=[2,2]               │
+│                      layout=[1,0]}}*/                      │
 │                                                             │
 │ // 操作的分片注解                                           │
-│ %result = dot(%x, %w) /*sharding={devices=[2,2]            │
-│                         layout=[0,1]}*/                    │
+│ %result = dot(%x, %w) /*sharding={{devices=[2,2]           │
+│                         layout=[0,1]}}*/                   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
         """
